@@ -62,7 +62,7 @@ const cache = (req, res, next) => {
   });
 };
 
-app.get("/repos/:username", getRepos);
+app.get("/repos/:username", cache, getRepos);
 // It limits the lots of request by caching the data as we used cache middleware for it
 
 app.listen(PORT, () => {
