@@ -1,19 +1,19 @@
 const express = require("express");
-// const fetch = require("node-fetch");
 const redis = require("redis");
 const axios = require("axios");
 
 const PORT = process.env.PORT || 5000;
 const REDIS_PORT = process.env.REDIS_PORT || 6379;
 
-const client = redis.createClient(REDIS_PORT, {
-  legacyMode: true,
-});
+let client;
 
-async function callClient() {
+(async () => {
+  client = redis.createClient();
+
+  client.on("error", (err) => console.log("Redis Client Error", err));
+
   await client.connect();
-}
-callClient();
+})();
 
 const app = express();
 app.use(express.json());
@@ -32,11 +32,10 @@ const getRepos = async (req, res, next) => {
     const response = await axios.get(
       `https://api.github.com/users/${username}`
     );
-    console.log(response.data);
     const repos = response.data.public_repos;
-    // Set data in redis
 
-    client.setex(username, 3600, repos);
+    // Set data in redis
+    await client.set(username, repos);
 
     res.send(setResponse(username, repos));
   } catch (err) {
@@ -46,23 +45,18 @@ const getRepos = async (req, res, next) => {
 };
 
 // Cache middleware
-
-const cache = (req, res, next) => {
+const cache = async (req, res, next) => {
   const { username } = req.params;
 
-  client.get(username, (err, data) => {
-    if (err) {
-      throw err;
-    }
-    if (data !== null) {
-      res.send(setResponse(username, data));
-    } else {
-      next();
-    }
-  });
+  const data = await client.get(username);
+
+  if (data !== null) {
+    res.send(setResponse(username, data));
+  }
+  next();
 };
 
-app.get("/repos/:username", getRepos);
+app.get("/repos/:username", cache, getRepos);
 // It limits the lots of request by caching the data as we used cache middleware for it
 
 app.listen(PORT, () => {
